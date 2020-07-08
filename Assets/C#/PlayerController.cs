@@ -15,6 +15,7 @@ public class PlayerController : MonoBehaviour
 	bool[] _runningCheck;
 	Transform _ground;
 	Pair<Transform, Vector3> _wallCollision;
+	Vector3[] _wallRunPositions;
 	Rigidbody _body;
 	float _stamina;
 	float _currentStamina;
@@ -23,6 +24,7 @@ public class PlayerController : MonoBehaviour
     void Start()
     {
 		_staminaBar = GameObject.Find("StaminaBar").GetComponent<Slider>();
+		_wallRunPositions = new Vector3[5];
 		_currentStamina = 1;
 		_stamina = _currentStamina;
 		_sprinting = false;
@@ -133,26 +135,22 @@ public class PlayerController : MonoBehaviour
 		}
 		Vector3 movDir = GetInputDirection();
 		float dot = Vector3.Dot(movDir, _wallCollision._two);
-		//wallrunDir upwards
-		RaycastHit hit;
-		if (Physics.Raycast(transform.position, movDir, out hit, 2)) {
-			//hit.normal;
-			//hit.point;
-			//_wallCollision._two = hit.normal;
-		}
-		//movDir = (Vector3.up + movDir).normalized;
+		
 
 		Vector3 side = Vector3.Cross(_wallCollision._two, Vector3.up);
 		Vector3 newUp = -Vector3.Cross(_wallCollision._two, side);
-		
+		Vector3 rayDir;
 		if (Mathf.Abs(dot) > 0.8f) {
 			movDir = newUp;
+			rayDir = Vector3.Cross(side, Vector3.up);
 		}
 		else {
 			Vector3 cross = Vector3.Cross(_wallCollision._two, Vector3.up);
 			dot = Vector3.Dot(movDir, cross);
+			rayDir = Vector3.Cross(side, Vector3.up);
 			if (dot > 0) {
 				movDir = cross;
+				
 			}
 			else {
 				movDir = -cross;
@@ -162,6 +160,14 @@ public class PlayerController : MonoBehaviour
 			//movDir = (_wallCollision._two + movDir).normalized;
 
 		}
+		//wallrunDir upwards
+		RaycastHit hit;
+		if (Physics.Raycast(transform.position, rayDir, out hit, 2)) {
+			//hit.normal;
+			//hit.point;
+			_wallCollision._two = hit.normal;
+		}
+		//movDir = (Vector3.up + movDir).normalized;
 		_body.velocity = Vector3.zero;
 		transform.position += (movDir + (newUp * curveValue)) * speed;
 		transform.localRotation = Quaternion.LookRotation(movDir);
@@ -179,6 +185,7 @@ public class PlayerController : MonoBehaviour
 		Debug.Log("start wall run");
 		_wallRunning = true;
 		_body.useGravity = false;
+		
 	}
 	void Running() {
 		_running = true;
