@@ -4,65 +4,60 @@ using UnityEngine;
 using UnityEngine.UI;
 public class PlayerController : MonoBehaviour
 {
-	public AnimationCurve _wallRunCurve;
+	
 	Slider _staminaBar;
 	bool[] _input;
-	bool _running;
-	public bool _inAir;
-	public bool _wallRunning;
-	bool _touchingWall;
-	bool _sprinting;
-	bool[] _runningCheck;
+	StateData _state;
 	Transform _ground;
+	public Transform[] debug;
+	public AnimationCurve _wallRunCurve;
 	Pair<Transform, Vector3> _wallCollision;
-	Vector3[] _wallRunPositions;
-	Rigidbody _body;
+	WallRunData _wallRunData;
+	public float _gravity;
+	public Vector3 _jumpVelocity;
+
 	float _stamina;
 	float _currentStamina;
 	//Vector3 _wallRunDir;
     // Start is called before the first frame update
     void Start()
     {
+		_jumpVelocity = new Vector3();
+		_wallRunData = new WallRunData();
 		_staminaBar = GameObject.Find("StaminaBar").GetComponent<Slider>();
-		_wallRunPositions = new Vector3[5];
+		//_wallRunPositions = new Transform[5];
 		_currentStamina = 1;
 		_stamina = _currentStamina;
-		_sprinting = false;
+		_state._sprinting = false;
 		_input = new bool[6];
 		_wallCollision = null;
-		_touchingWall = false;
-		_wallRunning = false;
-		_body = GetComponent<Rigidbody>();
-		//_collidedWithCount = 0;
-		//_runningCheck = new 
-		//if nothing and direction
-		//run
-		//if running and jump
-		//direction jump
-		//if nothing and jump
-		//direction jump
-		//if in air or on ground and direction and action button
-		//wall  run
-		//if wall run and jump
-		//wall jump
-		//if touching wall and jump adn in air
-		//wall jump
+		_state._touchingWall = false;
+		_state._wallRunning = false;
 	}
 
 	// Update is called once per frame
 	void Update()
     {
+		Debug.Log(_jumpVelocity);
+		//GetComponent<Rigidbody>().velocity = Vector3.zero;
 		RecoverStamina();
 		HandleInput();
 		HandleActionCalls();
-		Check4Air();
-		if (_wallRunning) {
+		if (_state._wallRunning) {
 			WallRun();
 		}
 		UpdateStamina();
+		if (_state._inAir) {
+			_jumpVelocity -= new Vector3(0, _gravity, 0);
+			if (_jumpVelocity.y < -5) {
+				_jumpVelocity.y = -5;
+			}
+			transform.position += _jumpVelocity;
+		}
+		
 	}
 	void RecoverStamina() {
-		if (!_wallRunning && _currentStamina < _stamina) {
+		if (!_state._wallRunning && _currentStamina < _stamina) {
 			_currentStamina += Time.deltaTime;
 		}
 	}
@@ -71,7 +66,7 @@ public class PlayerController : MonoBehaviour
 			Running();
 		}
 		else {
-			_running = false;
+			_state._running = false;
 		}
 		if (IfSprinting()) {
 			Sprinting();
@@ -80,14 +75,10 @@ public class PlayerController : MonoBehaviour
 		if (IfWallRun()) {
 			StartWallRun();
 		}
-		if (_wallRunning && !_input[5]) {
-			_body.useGravity = true;
-			_wallRunning = false;
+		if (_state._wallRunning && !_input[5]) {
+			StopWallRun();
 		}
-		if (_wallRunning && !_touchingWall) {
-			_body.useGravity = true;
-			_wallRunning = false;
-		}
+		
 		if (IfDirectionalJump()) {
 			DirectionalJump();
 		}
@@ -106,43 +97,60 @@ public class PlayerController : MonoBehaviour
 		_input[5] = (Input.GetKey(KeyCode.LeftShift));
 	}
 	bool IfRunning() {
-		return ((_input[0] || _input[1] || _input[2] || _input[3]) && (!(_input[4]) && !_input[5]) && !_wallRunning);
+		return ((_input[0] || _input[1] || _input[2] || _input[3]) && (!(_input[4]) && !_input[5]) && !_state._wallRunning);
 	}
 	bool IfSprinting() {
-		return ((_input[0] || _input[1] || _input[2] || _input[3]) && (!_input[4]) && _input[5] && !_wallRunning && !_inAir);
+		return ((_input[0] || _input[1] || _input[2] || _input[3]) && (!_input[4]) && _input[5] && !_state._wallRunning && !_state._inAir);
 	}
 	bool IfWallRun() {
-		return ((_input[0] || _input[1] || _input[2] || _input[3]) && !(_input[4]) && _input[5] && _touchingWall && !_wallRunning);
+		return ((_input[0] || _input[1] || _input[2] || _input[3]) && !(_input[4]) && _input[5] && _state._touchingWall && !_state._wallRunning);
 	}
 	bool IfDirectionalJump() {
-		return ((_input[0] || _input[1] || _input[2] || _input[3]) && _input[4] && !_input[5] && !_inAir);
+		return ((_input[0] || _input[1] || _input[2] || _input[3]) && _input[4] && !_input[5] && !_state._inAir);
 	}
 	bool IfJump() {
-		return ((!_input[0] && !_input[1] && !_input[2] && !_input[3]) && _input[4] && !_input[5] && !_inAir);
+		return ((!_input[0] && !_input[1] && !_input[2] && !_input[3]) && _input[4] && !_input[5] && !_state._inAir);
 	}
 	void WallRun() {
-
-		if (!_touchingWall) {
-			_wallRunning = false;
-			return;
-		}
 		Debug.Log("Wall Run");
-		float speed = 0.15f;
-		float curveValue = 0;
-		_currentStamina -= Time.deltaTime*0.1f;
-		if (_currentStamina <= 0) {
-			OutOfStamina();
+		float speed = 2f;
+		Vector3 next = _wallRunData.GetNext();
+		Vector3 movDir = ( next - transform.position).normalized;
+		if (Vector3.Distance(next, transform.position) < 10)
+			_wallRunData.Next();
+		if (_wallRunData.GetNext().x == -69696969) {
+			StopWallRun();
 		}
+
+		transform.position += (movDir) * speed;
+		transform.localRotation = Quaternion.LookRotation(movDir);
+	}
+
+	void OutOfStamina() {
+		_currentStamina = 0;
+		_state._wallRunning = false;
+	}
+	void StopWallRun() {
+		_state._inAir = true;
+		_state._wallRunning = false;
+		_wallRunData.Reset();
+		
+	}
+	void StartWallRun() {
+		Debug.Log("start wall run");
+		Grounded();
+		_state._wallRunning = true;
+		float vThresh = 0.85f;
+		bool vertical = false;
 		Vector3 movDir = GetInputDirection();
 		float dot = Vector3.Dot(movDir, _wallCollision._two);
-		
-
+		Vector3 rayDir = -_wallCollision._two;
 		Vector3 side = Vector3.Cross(_wallCollision._two, Vector3.up);
 		Vector3 newUp = -Vector3.Cross(_wallCollision._two, side);
-		Vector3 rayDir;
-		if (Mathf.Abs(dot) > 0.8f) {
+
+		if (Mathf.Abs(dot) > vThresh) {
 			movDir = newUp;
-			rayDir = Vector3.Cross(side, Vector3.up);
+			vertical = true;
 		}
 		else {
 			Vector3 cross = Vector3.Cross(_wallCollision._two, Vector3.up);
@@ -150,47 +158,38 @@ public class PlayerController : MonoBehaviour
 			rayDir = Vector3.Cross(side, Vector3.up);
 			if (dot > 0) {
 				movDir = cross;
-				
+
 			}
 			else {
 				movDir = -cross;
 			}
-			curveValue = _wallRunCurve.Evaluate((1 - (_currentStamina / _stamina)));
-			
-			//movDir = (_wallCollision._two + movDir).normalized;
+
 
 		}
-		//wallrunDir upwards
+		if (!vertical) movDir.y = 0;
 		RaycastHit hit;
-		if (Physics.Raycast(transform.position, rayDir, out hit, 2)) {
-			//hit.normal;
-			//hit.point;
-			_wallCollision._two = hit.normal;
+		Vector3 pos = transform.position;
+		int layer = LayerMask.GetMask("Wall");
+		for (int i = 0; i < _wallRunData._wallRunPositions.Length-1; i++) {
+			pos += movDir * 25;
+			if (Physics.Raycast(pos, rayDir, out hit, 150, layer)) {
+				Debug.Log(hit.point);
+				pos = hit.point + hit.normal * 14;
+				_wallRunData.Set(i, pos);
+				debug[i].position = pos;
+			}
+			else {
+
+			}
+
 		}
-		//movDir = (Vector3.up + movDir).normalized;
-		_body.velocity = Vector3.zero;
-		transform.position += (movDir + (newUp * curveValue)) * speed;
-		transform.localRotation = Quaternion.LookRotation(movDir);
-	}
-
-	void OutOfStamina() {
-		_currentStamina = 0;
-		_wallRunning = false;
-	}
-	void Check4Air() {
 		
 
-	}
-	void StartWallRun() {
-		Debug.Log("start wall run");
-		_wallRunning = true;
-		_body.useGravity = false;
-		
 	}
 	void Running() {
-		_running = true;
-		float speed = 0.1f;
-		if (_inAir) speed = 0.05f;
+		_state._running = true;
+		float speed = 2f;
+		if (_state._inAir) speed = 1f;
 		Vector3 runDir = GetRunningDir();
 		transform.position += runDir * speed;
 		transform.localRotation = Quaternion.LookRotation(runDir);
@@ -199,8 +198,8 @@ public class PlayerController : MonoBehaviour
 	void Sprinting() {
 		Debug.Log("Sprinting");
 		_currentStamina -= Time.deltaTime;
-		_sprinting = true;
-		float speed = 0.15f;
+		_state._sprinting = true;
+		float speed = 3f;
 		Vector3 runDir = GetRunningDir();
 		transform.position += runDir * speed;
 		transform.localRotation = Quaternion.LookRotation(runDir);
@@ -235,7 +234,7 @@ public class PlayerController : MonoBehaviour
 	Vector3 GetRunningDir() {
 
 		Vector3 runDir = GetInputDirection();
-		if (_touchingWall) {
+		if (_state._touchingWall) {
 			float dot = Vector3.Dot(runDir, _wallCollision._two);
 			if(dot > 0) return runDir;
 
@@ -249,36 +248,55 @@ public class PlayerController : MonoBehaviour
 		return runDir;
 	}
 	void DirectionalJump() {
-		_inAir = true;
+		_state._inAir = true;
 
-		_body.AddForce((GetRunningDir() + new Vector3(0, 1, 0))*250);
+		_jumpVelocity = GetRunningDir() * 3 + new Vector3(0, 10, 0);
 	}
 	void Jump() {
-		_inAir = true;
+		_state._inAir = true;
 		transform.position += new Vector3(0, 0.1f, 0);
-		_body.AddForce(Vector3.up * 200);
+		_jumpVelocity = new Vector3(0, 10, 0);
 	}
+	void Grounded() {
+		_state._inAir = false;
+		_jumpVelocity = new Vector3();
+	}
+
+	private void OnCollisionStay(Collision collision) {
+		ContactPoint[] cols = collision.contacts;
+		for (int i = 0; i < cols.Length; i++) {
+			if (cols[i].normal.y > 0.75f) {//if ground
+				Debug.Log(cols[i]);
+				Grounded();
+			}
+			else {
+				if (!_state._wallRunning) {
+					_state._inAir = true;
+				}
+			}	
+		}
+	}
+
 	private void OnCollisionEnter(Collision collision) {
 
-		if (collision.GetContact(0).normal.y > 0.8f) {//if ground
-			_inAir = false;
-			_ground = collision.gameObject.transform;
-		}
-		else { //if not ground
-			   //_collidedNormal = collision.GetContact(0).normal;
+		if (collision.GetContact(0).normal.y <0.75f) {//if not ground
+
 			_wallCollision = new Pair<Transform, Vector3>(collision.transform, collision.GetContact(0).normal);
-			_touchingWall = true;
+			_state._touchingWall = true;
 		}
+		
 			
 	}
 	private void OnCollisionExit(Collision collision) {
-		if (collision.transform == _ground) {
-			_inAir = true;
-			_ground = null;
+
+		if(_wallCollision!= null) {
+			if (_wallCollision._one == collision.transform) {
+				_wallCollision = null;
+				_state._touchingWall = false;
+			}
 		}
-		else if (_wallCollision._one == collision.transform) {
-			_wallCollision = null;
-			_touchingWall = false;
+		if (!_state._wallRunning) {
+			_state._inAir = true;
 		}
 	}
 	public void UpdateStamina() {
@@ -294,4 +312,35 @@ public class Pair<T, U> {
 		_two = two;
 	}
 
-}
+};
+public struct StateData {
+	public bool _running;
+	public bool _inAir;
+	public bool _wallRunning;
+	public bool _touchingWall;
+	public bool _sprinting;
+};
+public class WallRunData {
+	public Vector3[] _wallRunPositions;
+	int _wallRunIndex;
+	public WallRunData() {
+		_wallRunIndex = 0;
+		_wallRunPositions = new Vector3[6];
+		Reset();
+	}
+	public Vector3 GetNext() {
+		return _wallRunPositions[_wallRunIndex];
+	}
+	public void Set(int index, Vector3 pos) {
+		_wallRunPositions[index] = pos;
+	}
+	public void Next() {
+		_wallRunIndex++;
+	}
+	public void Reset() {
+		_wallRunIndex = 0;
+		for (int i = 0; i < _wallRunPositions.Length; i++) {
+			_wallRunPositions[i] = new Vector3(-69696969, -69696969, -69696969);
+		}
+	}
+};
